@@ -1,0 +1,2 @@
+- [x] Modificar FacturaController.php para retornar la vista 'confirmacion' con la respuesta de TuMyPay
+- [x] Actualizar confirmacion.blade.php para mostrar la URL de checkout y permitir proceder al pago

@@ -1,0 +1,5 @@
+documento,nombre_cliente,valor,fecha_vencimiento,estado
+123456789,Juan Pérez,150000,2024-12-31,pendiente
+987654321,María García,250000,2024-11-15,pendiente
+456789123,Carlos Rodríguez,80000,2024-10-20,pagada
+789123456,Ana López,120000,2024-12-10,pendiente
