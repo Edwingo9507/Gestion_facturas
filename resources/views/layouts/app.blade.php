@@ -137,7 +137,7 @@
             font-size: 0.9em;
         }
 
-        .estado.pagada { color: green; font-weight: bold; }
+    .estado.pagada { color: green; font-weight: bold; }
     .estado.pendiente { color: orange; font-weight: bold; }
     .estado.vencida { color: red; font-weight: bold; }
     table input[type="checkbox"] {
@@ -157,6 +157,23 @@
     }
     #btnPagar:hover {
         background-color: #1a5dbb;
+    }
+
+    .alert {
+        padding: 15px;
+        margin-bottom: 20px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+    }
+    .alert-success {
+        color: #155724;
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+    }
+    .alert-danger {
+        color: #721c24;
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
     }
 
 /* estilo para la vista de cofirmacion */

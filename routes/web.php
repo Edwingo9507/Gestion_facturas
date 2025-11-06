@@ -5,7 +5,12 @@ use App\Http\Controllers\AdminController;
 
 Route::get('/', [FacturaController::class, 'index'])->name('consulta');
 Route::post('/', [FacturaController::class, 'consultar'])->name('consultar');
-Route::post('/pagar', [FacturaController::class, 'pagarSeleccionadas'])->name('pagar.facturas');
+Route::match(['get', 'post'], '/pagar', [FacturaController::class, 'pagarSeleccionadas'])->name('pagar.facturas');
+
+Route::post('/webhook/tumipay', [FacturaController::class, 'webhook'])->name('webhook.tumipay')->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+Route::get('/pago/ok/{reference}', [FacturaController::class, 'pagoOk'])->name('pago.ok');
+Route::get('/pago/status/{reference}', [FacturaController::class, 'checkStatus'])->name('pago.status');
+
 
 // Rutas de administración
 Route::prefix('admin')->group(function () {

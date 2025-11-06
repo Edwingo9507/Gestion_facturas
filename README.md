@@ -224,6 +224,193 @@ TUMIPAY_TOKEN_TOP=tu_token_top_proporcionado_por_tumipay
 
 En desarrollo, si las credenciales no son válidas, el sistema simulará una respuesta exitosa.
 
+### Configuración para Desarrollo con Webhooks
+
+Para probar los webhooks en desarrollo local, es necesario exponer el servidor local a internet usando ngrok:
+
+#### 1. Instalar ngrok
+
+```bash
+# macOS con Homebrew
+brew install ngrok/ngrok/ngrok
+
+# O descargar desde https://ngrok.com/download
+```
+
+#### 2. Configurar ngrok con authtoken
+
+```bash
+ngrok config add-authtoken TU_AUTHTOKEN_AQUI
+```
+
+#### 3. Iniciar ngrok apuntando al puerto 8000
+
+```bash
+ngrok http 8000
+```
+
+Esto generará una URL como `https://abcd1234.ngrok-free.app` que apunta a tu servidor local.
+
+#### 4. Actualizar la URL del webhook en el código
+
+En `app/Http/Controllers/FacturaController.php`, línea donde se define `ipn_url`, reemplazar con la URL de ngrok:
+
+```php
+'ipn_url' => 'https://abcd1234.ngrok-free.app/webhook/tumipay',
+```
+
+#### 5. Configurar TuMyPay para usar la URL de ngrok
+
+Proporcionar la URL de ngrok a TuMyPay como URL de webhook para que puedan enviar las notificaciones de pago.
+
+## Funcionamiento del Sistema de Pagos
+
+### Flujo de Pago Completo
+
+1. **Consulta de Facturas**: El usuario ingresa su documento y consulta sus facturas pendientes
+2. **Selección de Facturas**: El usuario selecciona las facturas que desea pagar
+3. **Creación de Transacción**: El sistema crea una transacción en TuMyPay con:
+   - Referencia única generada
+   - Monto total de las facturas seleccionadas
+   - Datos del cliente
+   - URL de redirección directa a `/pago/ok/{reference}`
+   - URL del webhook (ngrok en desarrollo)
+   - Metadata con IDs de las facturas
+4. **Redirección a TuMyPay**: El usuario es redirigido a la pasarela de pagos de TuMyPay
+5. **Procesamiento del Pago**: TuMyPay procesa el pago
+6. **Redirección de Retorno**: TuMyPay redirige al usuario a `/pago/ok/{reference}`
+7. **Actualización en Tiempo Real**: La página muestra inicialmente "Pago Pendiente" y se actualiza automáticamente cada 3 segundos
+8. **Webhook de Notificación**: TuMyPay envía un webhook POST a `/webhook/tumipay` con el resultado del pago
+9. **Actualización de Base de Datos**: El webhook actualiza el estado de las facturas en la base de datos
+10. **Actualización Visual**: La página automáticamente cambia a "Pago Aprobado" sin recargar
+
+### Persistencia de Transacciones
+
+Para asegurar que el webhook pueda acceder a las facturas asociadas a una transacción, el sistema guarda cada transacción en un archivo JSON en `storage/app/transactions/{reference}.json` que contiene:
+
+```json
+{
+  "reference": "REF690D2CB014C46",
+  "facturas": [1, 2, 3],
+  "amount": 1500.00,
+  "status": "pending",
+  "created_at": "2025-11-06T18:18:08.000000Z",
+  "tumipay_response": {...}
+}
+```
+
+### Manejo del Webhook
+
+El webhook `/webhook/tumipay` maneja diferentes formatos de payload:
+
+- **Payload con metadata**: `{"top_status": "APPROVED", "top_metadata": {"facturas": [1,2]}}`
+- **Payload sin metadata**: `{"top_status": "APPROVED", "top_reference": "REF..."}`
+
+En ambos casos, el webhook:
+1. Extrae el status del pago (`top_status`)
+2. Obtiene los IDs de las facturas (de metadata o del archivo de transacción)
+3. Actualiza el estado `pagada = true` en la base de datos
+4. Actualiza el archivo de transacción con el nuevo status
+5. Responde con `{"status": "ok"}`
+
+### Verificación de Estado
+
+El endpoint `/pago/status/{reference}` permite verificar el estado de un pago consultando la base de datos:
+
+```json
+{
+  "status": "approved" // o "pending"
+}
+```
+
+## Pruebas de Pago
+
+### Pruebas con TuMyPay Sandbox
+
+TuMyPay proporciona un entorno de pruebas (sandbox) donde puedes simular pagos sin usar dinero real.
+
+#### Configuración para Pruebas
+
+1. **Credenciales de Prueba**: Solicitar credenciales de sandbox a TuMyPay
+2. **Email de Prueba**: Usar `approved@tumipay.co` para simular pagos aprobados
+3. **Webhook de Prueba**: Configurar ngrok como se explicó anteriormente
+
+#### Simulación de Pagos
+
+1. **Pago Aprobado**:
+   - Usar email: `approved@tumipay.co`
+   - El pago se aprobará automáticamente
+
+2. **Pago Rechazado**:
+   - Usar email: `declined@tumipay.co`
+   - El pago será rechazado
+
+3. **Pago Pendiente**:
+   - Usar email: `pending@tumipay.co`
+   - El pago quedará en estado pendiente
+
+### Pruebas Manuales del Webhook
+
+Puedes probar el webhook manualmente usando curl:
+
+#### Webhook con Metadata (Desarrollo)
+```bash
+curl -X POST https://tu-ngrok-url.ngrok-free.app/webhook/tumipay \
+  -H "Content-Type: application/json" \
+  -d '{
+    "top_status": "APPROVED",
+    "top_reference": "REF690D2CB014C46",
+    "top_metadata": {"facturas": [1, 2]}
+  }'
+```
+
+#### Webhook sin Metadata (Producción)
+```bash
+curl -X POST https://tu-ngrok-url.ngrok-free.app/webhook/tumipay \
+  -H "Content-Type: application/json" \
+  -d '{
+    "top_status": "APPROVED",
+    "top_reference": "REF690D2CB014C46"
+  }'
+```
+
+#### Verificar Estado de Facturas
+```bash
+php artisan tinker --execute="echo App\Models\Factura::whereIn('id', [1,2])->get(['id', 'pagada'])->toJson()"
+```
+
+### Pruebas del Flujo Completo
+
+1. **Iniciar servidor**: `php artisan serve --host=0.0.0.0 --port=8000`
+2. **Iniciar ngrok**: `ngrok http 8000`
+3. **Actualizar webhook URL** en el código con la URL de ngrok
+4. **Crear transacción**: Ir a la aplicación y crear un pago
+5. **Simular webhook**: Usar curl para enviar el webhook
+6. **Verificar actualización**: La página debería cambiar automáticamente de "Pendiente" a "Aprobado"
+
+### Debugging
+
+#### Logs del Webhook
+```bash
+tail -f storage/logs/laravel.log
+```
+
+Los logs mostrarán:
+- Recepción del webhook con el payload completo
+- Actualización exitosa de facturas
+- Errores si ocurren
+
+#### Verificar Transacciones Guardadas
+```bash
+ls -la storage/app/transactions/
+cat storage/app/transactions/REF690D2CB014C46.json
+```
+
+#### Verificar Estado de Base de Datos
+```bash
+php artisan tinker --execute="App\Models\Factura::all()->toJson()"
+```
+
 ## Desarrollo
 
 ### Ejecutar en modo desarrollo
